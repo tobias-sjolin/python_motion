@@ -114,6 +114,7 @@ def keepDiskSpaceFree(bytesToReserve):
 
 def ftp_file(filepath,filename):
     try:
+        
         session = ftplib.FTP(sys.argv[4],sys.argv[5],sys.argv[6])
         file = open(filepath + "/" + filename,'rb')                  # file to send
         session.storbinary('STOR ' + filename, file)     # send the file
