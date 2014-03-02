@@ -113,11 +113,14 @@ def keepDiskSpaceFree(bytesToReserve):
                     return
 
 def ftp_file(filepath,filename):
-    session = ftplib.FTP(sys.argv[4],sys.argv[5],sys.argv[6])
-    file = open(filepath + "/" + filename,'rb')                  # file to send
-    session.storbinary('STOR ' + filename, file)     # send the file
-    file.close()                                    # close file and FTP
-    session.quit()
+    try:
+        session = ftplib.FTP(sys.argv[4],sys.argv[5],sys.argv[6])
+        file = open(filepath + "/" + filename,'rb')                  # file to send
+        session.storbinary('STOR ' + filename, file)     # send the file
+        file.close()                                    # close file and FTP
+        session.quit()
+    except Exception, e:
+        print str(e)
 
 def send_mail(send_from, send_to, subject, text, files=[], server="localhost"):
     assert type(send_to)==list
