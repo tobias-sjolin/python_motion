@@ -30,6 +30,7 @@ from email import Encoders
 # diskSpaceToReserve - Delete oldest images to avoid filling disk. How much byte to keep free on disk.
 # cameraSettings     - "" = no extra settings; "-hf" = Set horizontal flip of image; "-vf" = Set vertical flip; "-hf -vf" = both horizontal and vertical flip
 # ongoingTime        - Defining an ongoing event rather than a new event. If a motion occurs within this time is is defined as part of the last motion
+# ongoingTimeCheck   - Defining a long ongoing event. If longer than this time then we want to do more.
 threshold = 10
 sensitivity = 20
 forceCapture = False
@@ -39,6 +40,7 @@ filenamePrefix = "capture"
 diskSpaceToReserve = 400 * 1024 * 1024 # Keep 400 mb free on disk
 cameraSettings = ""
 ongoingTime = 1 * 60 # One minute
+ongoingTimeCheck = 5*60 # Five minutes
 
 # settings of the photos to save
 saveWidth   = 1296
@@ -96,11 +98,11 @@ def saveImage(settings, width, height, quality, diskSpaceToReserve, ongoing):
     subprocess.call("raspistill %s -w %s -h %s -t 200 -e jpg -q %s -n -o %s" % (settings, width, height, quality, filepath + "/" +filename), shell=True)
     ftp_file(day,filepath,filename)
     print "Captured image: %s" % (filename)
-    if ongoing:
+    if ongoing == 2:
         #If we have an ongoing movement then we do not want to send spam. It is sufficient to get emails about new movements.
         #Also we don't do video
-        print "Nothing to do"
-    else:
+        print "Motion going on but not that weird so we do nothing for now"
+    elif ongoing == 1:
         #Send image to email
         send_mail(sys.argv[1], [sys.argv[2]], 'Motion detected!', 'Image:', [filepath +"/"+filename],sys.argv[3])
         #Capture 5 sec video
@@ -109,6 +111,17 @@ def saveImage(settings, width, height, quality, diskSpaceToReserve, ongoing):
         #FTP video
         ftp_file(day,filepath,filename_vid)
         print "Captured video: %s" % (filename_vid)
+    elif ongoing == 3:
+        #Send image to email
+        send_mail(sys.argv[1], [sys.argv[2]], 'Motion still going on!', 'Image:', [filepath +"/"+filename],sys.argv[3])
+        #Capture 5 sec video
+        filename_vid = filenamePrefix + "-%04d%02d%02d-%02d%02d%02d.h264" % (time.year, time.month, time.day, time.hour, time.minute, time.second)
+        subprocess.call("raspivid -n -o %s" % (filepath + "/" + filename_vid), shell=True)
+        #FTP video
+        ftp_file(day,filepath,filename_vid)
+        print "Captured video: %s" % (filename_vid)
+    else: 
+        print "Not supported"
     print "Done"    
 
 # Keep free space above given level
@@ -198,7 +211,7 @@ while (True):
     # Count changed pixels
     changedPixels = 0
     takePicture = False
-    ongoing = False #Variable to detect if it is an ongoing motion or a new motion
+    ongoing = 1 #Variable to detect if it is an ongoing motion (2), new motion (1) or long ongoing motion (3)
 
     if (debugMode): # in debug mode, save a bitmap-file with marked changed pixels and with visible testarea-borders
         debugimage = Image.new("RGB",(testWidth, testHeight))
@@ -244,9 +257,15 @@ while (True):
         #If lastcapture was within ongoingTime then we classify this as an ongoing movement
         secondsSinceLast = time.time() -lastCapture
         if secondsSinceLast < ongoingTime:
-            ongoing = True
-            print "Ongoing movement since number of seconds since last movement was " + str(secondsSinceLast)
+            ongoing = 2            
+            print "Ongoing movement since number of seconds since last movement was " + str(secondsSinceLast) + ". This event started " + str(time.time() - ongoingStarted) + " seconds ago."
+            #However if this has been an ongoing thing for longer than ongoingTimeCheck then we want to do a new check with this knowledge
+            if time.time() - ongoingStarted > ongoingTimeCheck:
+                ongoing = 3
+                ongoingStarted = time.time() #And we do this to reset the ongoing event so we do not get spammed after this.
+                print "Still ongoing but we really want to check what is up"
         else:
+            ongoingStarted = time.time()
             print "New movement" 
         lastCapture = time.time()
         saveImage(cameraSettings, saveWidth, saveHeight, saveQuality, diskSpaceToReserve, ongoing)
