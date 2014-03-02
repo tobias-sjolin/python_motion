@@ -29,14 +29,16 @@ from email import Encoders
 # filenamePrefix     - string that prefixes the file name for easier identification of files.
 # diskSpaceToReserve - Delete oldest images to avoid filling disk. How much byte to keep free on disk.
 # cameraSettings     - "" = no extra settings; "-hf" = Set horizontal flip of image; "-vf" = Set vertical flip; "-hf -vf" = both horizontal and vertical flip
+# ongoingTime        - Defining an ongoing event rather than a new event. If a motion occurs within this time is is defined as part of the last motion
 threshold = 10
 sensitivity = 20
-forceCapture = True
+forceCapture = False
 forceCaptureTime = 60 * 60 # Once an hour
 filepath = "/home/pi/python_motion"
 filenamePrefix = "capture"
 diskSpaceToReserve = 400 * 1024 * 1024 # Keep 400 mb free on disk
 cameraSettings = ""
+ongoingTime = 1 * 60 # One minute
 
 # settings of the photos to save
 saveWidth   = 1296
@@ -85,22 +87,29 @@ def captureTestImage(settings, width, height):
     return im, buffer
 
 # Save a full size image to disk
-def saveImage(settings, width, height, quality, diskSpaceToReserve):
+def saveImage(settings, width, height, quality, diskSpaceToReserve, ongoing):
     keepDiskSpaceFree(diskSpaceToReserve)
     time = datetime.now()
+    day = datetime.today().strftime("%Y%m%d")
     #Capture image
     filename = filenamePrefix + "-%04d%02d%02d-%02d%02d%02d.jpg" % (time.year, time.month, time.day, time.hour, time.minute, time.second)
     subprocess.call("raspistill %s -w %s -h %s -t 200 -e jpg -q %s -n -o %s" % (settings, width, height, quality, filepath + "/" +filename), shell=True)
-    #Send image to email
-    #Thing is that don't want to spam. 
-    send_mail(sys.argv[1], [sys.argv[2]], 'Motion detected!', 'Image:', [filepath +"/"+filename],sys.argv[3])
-    #Capture 5 sec video
-    filename_vid = filenamePrefix + "-%04d%02d%02d-%02d%02d%02d.h264" % (time.year, time.month, time.day, time.hour, time.minute, time.second)
-    subprocess.call("raspivid -o %s" % (filepath + "/" + filename_vid), shell=True)
-    #FTP image and video
-    ftp_file(filepath,filename)
-    ftp_file(filepath,filename_vid)
-    print "Captured image: %s and video: %s" % (filename,filename_vid) 
+    ftp_file(day,filepath,filename)
+    print "Captured image: %s" % (filename)
+    if ongoing:
+        #If we have an ongoing movement then we do not want to send spam. It is sufficient to get emails about new movements.
+        #Also we don't do video
+        print "Nothing to do"
+    else:
+        #Send image to email
+        send_mail(sys.argv[1], [sys.argv[2]], 'Motion detected!', 'Image:', [filepath +"/"+filename],sys.argv[3])
+        #Capture 5 sec video
+        filename_vid = filenamePrefix + "-%04d%02d%02d-%02d%02d%02d.h264" % (time.year, time.month, time.day, time.hour, time.minute, time.second)
+        subprocess.call("raspivid -n -o %s" % (filepath + "/" + filename_vid), shell=True)
+        #FTP video
+        ftp_file(day,filepath,filename_vid)
+        print "Captured video: %s" % (filename_vid)
+    print "Done"    
 
 # Keep free space above given level
 def keepDiskSpaceFree(bytesToReserve):
@@ -112,11 +121,26 @@ def keepDiskSpaceFree(bytesToReserve):
                 if (getFreeSpace() > bytesToReserve):
                     return
 
-def ftp_file(filepath,filename):
+def ftp_file(directory,filepath,filename):
     try:
-        
         session = ftplib.FTP(sys.argv[4],sys.argv[5],sys.argv[6])
         file = open(filepath + "/" + filename,'rb')                  # file to send
+        #Change to Motion directory
+        try:
+            session.cwd("PythonMotion")
+        except Exception, e:
+            if "PythonMotion" in str(e):
+                session.mkd("PythonMotion")
+                session.cwd("PythonMotion")
+                print "Did not find PythonMotion folder. Created it"
+        #Change to daily directory
+        try:
+            session.cwd(directory)
+        except Exception, e:
+            if directory in str(e):
+               session.mkd(directory)
+               session.cwd(directory)
+               print "Did not find " + directory + " folder. Created it"
         session.storbinary('STOR ' + filename, file)     # send the file
         file.close()                                    # close file and FTP
         session.quit()
@@ -164,7 +188,7 @@ print "Ftp pwd: " +sys.argv[6]
 image1, buffer1 = captureTestImage(cameraSettings, testWidth, testHeight)
 
 # Reset last capture time
-lastCapture = time.time()
+lastCapture = 0
 
 while (True):
 
@@ -174,6 +198,7 @@ while (True):
     # Count changed pixels
     changedPixels = 0
     takePicture = False
+    ongoing = False #Variable to detect if it is an ongoing motion or a new motion
 
     if (debugMode): # in debug mode, save a bitmap-file with marked changed pixels and with visible testarea-borders
         debugimage = Image.new("RGB",(testWidth, testHeight))
@@ -213,10 +238,18 @@ while (True):
     if forceCapture:
         if time.time() - lastCapture > forceCaptureTime:
             takePicture = True
+            print "Because of force, no movement"
 
     if takePicture:
+        #If lastcapture was within ongoingTime then we classify this as an ongoing movement
+        secondsSinceLast = time.time() -lastCapture
+        if secondsSinceLast < ongoingTime:
+            ongoing = True
+            print "Ongoing movement since number of seconds since last movement was " + str(secondsSinceLast)
+        else:
+            print "New movement" 
         lastCapture = time.time()
-        saveImage(cameraSettings, saveWidth, saveHeight, saveQuality, diskSpaceToReserve)
+        saveImage(cameraSettings, saveWidth, saveHeight, saveQuality, diskSpaceToReserve, ongoing)
 
     # Swap comparison buffers
     image1 = image2
