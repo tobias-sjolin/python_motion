@@ -12,6 +12,7 @@ import os
 import time
 import commands
 import smtplib, os, sys
+import ftplib
 from datetime import datetime
 from PIL import Image
 from email.MIMEMultipart import MIMEMultipart
@@ -87,11 +88,18 @@ def captureTestImage(settings, width, height):
 def saveImage(settings, width, height, quality, diskSpaceToReserve):
     keepDiskSpaceFree(diskSpaceToReserve)
     time = datetime.now()
-    filename = filepath + "/" + filenamePrefix + "-%04d%02d%02d-%02d%02d%02d.jpg" % (time.year, time.month, time.day, time.hour, time.minute, time.second)
-    subprocess.call("raspistill %s -w %s -h %s -t 200 -e jpg -q %s -n -o %s" % (settings, width, height, quality, filename), shell=True)
-    send_mail('tobias@sjolin.se', ['tobias@sjolin.se'], 'Motion detected!', 'Video:', [filename],"mail.sjolin.se")
-    filename_vid = filepath + "/" + filenamePrefix + "-%04d%02d%02d-%02d%02d%02d.h264" % (time.year, time.month, time.day, time.hour, time.minute, time.second)
-    subprocess.call("raspivid -o %s" % (filename_vid), shell=True)
+    #Capture image
+    filename = filenamePrefix + "-%04d%02d%02d-%02d%02d%02d.jpg" % (time.year, time.month, time.day, time.hour, time.minute, time.second)
+    subprocess.call("raspistill %s -w %s -h %s -t 200 -e jpg -q %s -n -o %s" % (settings, width, height, quality, filepath + "/" +filename), shell=True)
+    #Send image to email
+    #Thing is that don't want to spam. 
+    send_mail('tobias@sjolin.se', ['tobias@sjolin.se'], 'Motion detected!', 'Image:', [filepath +"/"+filename],"mail.sjolin.se")
+    #Capture 5 sec video
+    filename_vid = filenamePrefix + "-%04d%02d%02d-%02d%02d%02d.h264" % (time.year, time.month, time.day, time.hour, time.minute, time.second)
+    subprocess.call("raspivid -o %s" % (filepath + "/" + filename_vid), shell=True)
+    #FTP image and video
+    ftp_file(filepath,filename)
+    ftp_file(filepath,filename_vid)
     print "Captured image: %s and video: %s" % (filename,filename_vid) 
 
 # Keep free space above given level
@@ -103,6 +111,13 @@ def keepDiskSpaceFree(bytesToReserve):
                 print "Deleted %s/%s to avoid filling disk" % (filepath,filename)
                 if (getFreeSpace() > bytesToReserve):
                     return
+
+def ftp_file(filepath,filename):
+    session = ftplib.FTP('192.168.100.10','tobias','Kap10Fi!!ing')
+    file = open(filepath + "/" + filename,'rb')                  # file to send
+    session.storbinary('STOR ' + filename, file)     # send the file
+    file.close()                                    # close file and FTP
+    session.quit()
 
 def send_mail(send_from, send_to, subject, text, files=[], server="localhost"):
     assert type(send_to)==list
