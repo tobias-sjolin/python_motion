@@ -93,7 +93,7 @@ def saveImage(settings, width, height, quality, diskSpaceToReserve):
     subprocess.call("raspistill %s -w %s -h %s -t 200 -e jpg -q %s -n -o %s" % (settings, width, height, quality, filepath + "/" +filename), shell=True)
     #Send image to email
     #Thing is that don't want to spam. 
-    send_mail('tobias@sjolin.se', ['tobias@sjolin.se'], 'Motion detected!', 'Image:', [filepath +"/"+filename],"mail.sjolin.se")
+    send_mail(sys.argv[1], [sys.argv[2]], 'Motion detected!', 'Image:', [filepath +"/"+filename],sys.argv[3])
     #Capture 5 sec video
     filename_vid = filenamePrefix + "-%04d%02d%02d-%02d%02d%02d.h264" % (time.year, time.month, time.day, time.hour, time.minute, time.second)
     subprocess.call("raspivid -o %s" % (filepath + "/" + filename_vid), shell=True)
@@ -113,7 +113,7 @@ def keepDiskSpaceFree(bytesToReserve):
                     return
 
 def ftp_file(filepath,filename):
-    session = ftplib.FTP('192.168.100.10','tobias','Kap10Fi!!ing')
+    session = ftplib.FTP(sys.argv[4],sys.argv[5],sys.argv[6])
     file = open(filepath + "/" + filename,'rb')                  # file to send
     session.storbinary('STOR ' + filename, file)     # send the file
     file.close()                                    # close file and FTP
@@ -147,6 +147,14 @@ def getFreeSpace():
     st = os.statvfs(filepath + "/")
     du = st.f_bavail * st.f_frsize
     return du
+
+#Print out config options
+print "Mail address From: " + sys.argv[1] 
+print "Mail address To: " + sys.argv[2] 
+print "Mail server: " + sys.argv[3] 
+print "Ftp server: " + sys.argv[4]
+print "Ftp user: " +sys.argv[5]
+print "Ftp pwd: " +sys.argv[6]
 
 # Get first image
 image1, buffer1 = captureTestImage(cameraSettings, testWidth, testHeight)
