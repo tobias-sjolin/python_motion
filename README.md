@@ -5,4 +5,4 @@ Motion detection script with Python
 
 Run with
 
-python python_motion <Mail address from> <mail address to> <mailserver> <ftpserver> <ftpuser> <ftppwd>
+python python_motion MailAddressFrom MailAddressTo MailServer FtpServer FtpUser FtpPwd
