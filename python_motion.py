@@ -33,7 +33,7 @@ from email import Encoders
 # ongoingTime        - Defining an ongoing event rather than a new event. If a motion occurs within this time is is defined as part of the last motion
 # ongoingTimeCheck   - Defining a long ongoing event. If longer than this time then we want to do more.
 threshold = 10
-sensitivity = 20
+sensitivity = 1500
 forceCapture = False
 forceCaptureTime = 60 * 60 # Once an hour
 filepath = "/home/pi/python_motion"
